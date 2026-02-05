@@ -4,11 +4,9 @@ setlocal enabledelayedexpansion
 chcp 65001 >nul
 
 :: 动态关键字配置：多个词用管道符分割。例如：aaa|bbb
-set "KEYWORDS=An existing connection was forcibly closed by the remote host|重试连接节点失败|i/o timeout"
+set "KEYWORDS=An existing connection was forcibly closed by the remote host"
 set "LOG_DIR=C:\ProgramData\SakuraFrpService\Logs"
 set "LOG_FILE=%LOG_DIR%\RestartSakuraService.log"
-:: 上一次执行日期（用于日志轮转）
-set "LAST_EXEC_DATE="
 :: 日志函数（每次调用都获取当前时间）
 goto :main
 
@@ -24,7 +22,6 @@ set "D=%dt:~0,4%-%dt:~4,2%-%dt:~6,2%"
 set "T=%dt:~8,2%:%dt:~10,2%:%dt:~12,2%.%dt:~15,3%"
 set "TS=%D% %T%"
 >>"%LOG_FILE%" echo [%TS%] %*
-echo %*
 endlocal
 goto :eof
 
@@ -82,101 +79,12 @@ endlocal
 goto :eof
 
 :: ==============================
-:: 函数: rotate_log
-:: 作用: 日志轮转 - 按日期重命名日志文件
-:: ==============================
-:rotate_log
-setlocal enabledelayedexpansion
-
-:: 获取当前日期 (yyyyMMdd)
-for /f "tokens=2 delims==" %%a in ('wmic os get localdatetime /value') do set "CURRENT_DATE=%%a"
-set "CURRENT_DATE=!CURRENT_DATE:~0,8!"
-
-:: 检查是否需要轮转
-if "!LAST_EXEC_DATE!"=="" (
-    :: 首次执行，检查日志文件是否存在
-    if exist "%LOG_FILE%" (
-        :: 必须先获取最后一行内容后才能写入其他日志
-        set "LAST_LINE="
-        for /f "delims=" %%i in ('type "%LOG_FILE%"') do set "LAST_LINE=%%i"
-        echo "!LAST_LINE!"
-        :: 从日志行中提取日期部分 [yyyy-MM-dd HH:mm:ss.sss]
-        if defined LAST_LINE (
-            echo !LAST_LINE! | find "[" >nul
-            if !errorlevel!==0 (
-                :: 使用简单可靠的日期提取方法
-                for /f "tokens=1 delims=[]" %%a in ("!LAST_LINE!") do (
-                    for /f "tokens=1 delims= " %%b in ("%%a") do (
-                        for /f "tokens=1-3 delims=-" %%c in ("%%b") do (
-                            set "LAST_EXEC_DATE=%%c%%d%%e"
-                        )
-                    )
-                )
-                if defined LAST_EXEC_DATE (
-                    @REM call :log Extracted last execution date: !LAST_EXEC_DATE!
-                ) else (
-                    call :log Cannot extract date from log, using current date: !CURRENT_DATE!
-                    set "LAST_EXEC_DATE=!CURRENT_DATE!"
-                )
-            ) else (
-                :: 无法提取日期，使用当前日期
-                call :log Cannot extract date from log, using current date: !CURRENT_DATE!
-                set "LAST_EXEC_DATE=!CURRENT_DATE!"
-            )
-        ) else (
-            :: 无法提取日期，使用当前日期
-            call :log Cannot extract date from log, using current date: !CURRENT_DATE!
-            set "LAST_EXEC_DATE=!CURRENT_DATE!"
-        )
-    ) else (
-        :: 日志文件不存在，使用当前日期
-        call :log "首次执行，设置上次执行日期: !CURRENT_DATE!"
-        set "LAST_EXEC_DATE=!CURRENT_DATE!"
-    )
-    
-    :: 判断是否需要轮转
-    if not "!LAST_EXEC_DATE!"=="!CURRENT_DATE!" (
-        call :log "日期变更 (!LAST_EXEC_DATE! -> !CURRENT_DATE!)，执行日志轮转"
-        :: 检查日志文件是否存在
-        if exist "%LOG_FILE%" (
-            :: 重命名日志文件
-            set "OLD_LOG_FILE=%LOG_DIR%\RestartSakuraService.!LAST_EXEC_DATE!.log"
-            call :log "重命名日志文件: %LOG_FILE% -> !OLD_LOG_FILE!"
-            
-            :: 使用 move 命令重命名文件
-            move "%LOG_FILE%" "!OLD_LOG_FILE!" >nul 2>&1
-            
-            if exist "!OLD_LOG_FILE!" (
-                call :log "日志文件重命名成功"
-            ) else (
-                call :log "[WARNING] 日志文件重命名失败"
-            )
-            :: 创建新的日志文件
-            echo. > "%LOG_FILE%"
-            call :log "创建新的日志文件: %LOG_FILE%"
-        ) else (
-            call :log "日志文件不存在，无需轮转"
-        )
-        :: 更新上次执行日期
-        set "LAST_EXEC_DATE=!CURRENT_DATE!"
-        call :log "更新上次执行日期: !LAST_EXEC_DATE!"
-    ) else (
-        @REM call :log "日期未变更 (!CURRENT_DATE!)，跳过日志轮转"
-    )
-    
-)
-endlocal & set "LAST_EXEC_DATE=%LAST_EXEC_DATE%"
-goto :eof
-:: ==============================
 :: 函数: main
 :: 作用: 主函数，执行重启逻辑
 :: ==============================
 :main
 :: 创建日志目录
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
-
-:: 执行日志轮转检查
-call :rotate_log
 
 :: 获取当前日期
 for /f "tokens=2 delims==" %%a in ('wmic os get localdatetime /value') do set "DT=%%a"
