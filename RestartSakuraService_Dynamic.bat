@@ -24,7 +24,7 @@ set "D=%dt:~0,4%-%dt:~4,2%-%dt:~6,2%"
 set "T=%dt:~8,2%:%dt:~10,2%:%dt:~12,2%.%dt:~15,3%"
 set "TS=%D% %T%"
 >>"%LOG_FILE%" echo [%TS%] %*
-echo %*
+:: echo %*
 endlocal
 goto :eof
 
@@ -37,7 +37,7 @@ goto :eof
 :log_file_content
 setlocal enabledelayedexpansion
 set "input_file=%*"
-echo "%input_file%"
+REM echo "%input_file%"
 
 if not exist "!input_file!" (
     call :log "[WARNING] File not found: !input_file!"
@@ -71,7 +71,7 @@ set "temp_out=%temp%\sc_output_%RANDOM%.txt"
 
 :: 逐行读取并记录到日志
 if exist "%temp_out%" (
-    echo 命令: %cmd%
+    REM echo 命令: %cmd%
     call :log_file_content %temp_out%
     del "%temp_out%" >nul 2>&1
 ) else (
@@ -99,7 +99,7 @@ if "!LAST_EXEC_DATE!"=="" (
         :: 必须先获取最后一行内容后才能写入其他日志
         set "LAST_LINE="
         for /f "delims=" %%i in ('type "%LOG_FILE%"') do set "LAST_LINE=%%i"
-        echo "!LAST_LINE!"
+        REM echo "!LAST_LINE!"
         :: 从日志行中提取日期部分 [yyyy-MM-dd HH:mm:ss.sss]
         if defined LAST_LINE (
             echo !LAST_LINE! | find "[" >nul
@@ -182,6 +182,9 @@ call :rotate_log
 for /f "tokens=2 delims==" %%a in ('wmic os get localdatetime /value') do set "DT=%%a"
 set "LOG_DATE=%DT:~0,8%"
 set "LOG_FILE_PATH=C:\ProgramData\SakuraFrpService\Logs\SakuraFrpService.%LOG_DATE%.log"
+
+:: 记录脚本开始时间（用于计算执行时间）
+set "START_TIME=%DT%"
 
 call :log 脚本执行开始............................................
 call :log 当前日期: %LOG_DATE%
@@ -279,6 +282,54 @@ goto :to_exit
 :: 退出，统一日志
 :: ===========================
 :to_exit
-call :log 脚本执行完成............................................
+call :calculate_execution_time
 exit /b 0
+goto :eof
+
+:: ==============================
+:: 函数: calculate_execution_time
+:: 作用: 计算脚本执行时间并显示
+:: ==============================
+:calculate_execution_time
+setlocal enabledelayedexpansion
+
+:: 获取当前时间
+for /f "tokens=2 delims==" %%a in ('wmic os get localdatetime /value') do set "END_TIME=%%a"
+
+:: 提取开始时间和结束时间的各个部分
+set "START_YEAR=!START_TIME:~0,4!"
+set "START_MONTH=!START_TIME:~4,2!"
+set "START_DAY=!START_TIME:~6,2!"
+set "START_HOUR=!START_TIME:~8,2!"
+set "START_MINUTE=!START_TIME:~10,2!"
+set "START_SECOND=!START_TIME:~12,2!"
+set "START_MILLISECOND=!START_TIME:~15,3!"
+
+set "END_YEAR=!END_TIME:~0,4!"
+set "END_MONTH=!END_TIME:~4,2!"
+set "END_DAY=!END_TIME:~6,2!"
+set "END_HOUR=!END_TIME:~8,2!"
+set "END_MINUTE=!END_TIME:~10,2!"
+set "END_SECOND=!END_TIME:~12,2!"
+set "END_MILLISECOND=!END_TIME:~15,3!"
+
+:: 计算总秒数（简化计算，假设在同一天）
+set /a "START_TOTAL_SECONDS=(!START_HOUR!*3600)+(!START_MINUTE!*60)+!START_SECOND!"
+set /a "END_TOTAL_SECONDS=(!END_HOUR!*3600)+(!END_MINUTE!*60)+!END_SECOND!"
+
+:: 计算时间差（秒）
+set /a "ELAPSED_SECONDS=END_TOTAL_SECONDS - START_TOTAL_SECONDS"
+
+:: 处理负数情况（跨天）
+if !ELAPSED_SECONDS! lss 0 (
+    set /a "ELAPSED_SECONDS=ELAPSED_SECONDS + 86400"  :: 86400秒 = 24小时
+)
+
+:: 转换为分钟和秒
+set /a "ELAPSED_MINUTES=ELAPSED_SECONDS / 60"
+set /a "ELAPSED_REMAINING_SECONDS=ELAPSED_SECONDS %% 60"
+
+:: 显示执行时间
+call :log 脚本执行完成............................................ : !ELAPSED_MINUTES!分!ELAPSED_REMAINING_SECONDS!秒
+endlocal
 goto :eof
